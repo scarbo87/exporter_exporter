@@ -18,7 +18,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"flag"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -29,33 +28,34 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
+	"golang.org/x/sync/errgroup"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	printVersion = flag.Bool("version", false, "Print the version and exit")
+	printVersion = kingpin.Flag("version", "Print the version and exit").Default("false").Bool()
 
-	cfgFile  = flag.String("config.file", "expexp.yaml", "The path to the configuration file.")
-	cfgDirs  StringSliceFlag
-	skipDirs = flag.Bool("config.skip-dirs", false, "Skip non existent -config.dirs entries instead of terminating.")
+	cfgDirs   StringSliceFlag
+	cfgDirsFl = kingpin.Flag("config.dirs", "The path to directories of configuration files, can be specified multiple times.").Default("config.dirs").Strings()
+	cfgFile   = kingpin.Flag("config.file", "The path to the configuration file.").Default("expexp.yaml").String()
+	skipDirs  = kingpin.Flag("config.skip-dirs", "Skip non existent -config.dirs entries instead of terminating.").Default("false").Bool()
 
-	addr = flag.String("web.listen-address", ":9999", "The address to listen on for HTTP requests.")
+	addr = kingpin.Flag("web.listen-address", "The address to listen on for HTTP requests.").Default(":9999").String()
 
-	bearerToken     = flag.String("web.bearer.token", "", "Bearer authentication token.")
-	bearerTokenFile = flag.String("web.bearer.token-file", "", "File containing the Bearer authentication token.")
+	bearerToken     = kingpin.Flag("web.bearer.token", "Bearer authentication token.").String()
+	bearerTokenFile = kingpin.Flag("web.bearer.token-file", "File containing the Bearer authentication token.").String()
 
-	certPath = flag.String("web.tls.cert", "cert.pem", "Path to cert")
-	keyPath  = flag.String("web.tls.key", "key.pem", "Path to key")
-	caPath   = flag.String("web.tls.ca", "ca.pem", "Path to CA to auth clients against")
-	verify   = flag.Bool("web.tls.verify", false, "Disable client verification")
-	tlsAddr  = flag.String("web.tls.listen-address", "", "The address to listen on for HTTPS requests.")
+	certPath = kingpin.Flag("web.tls.cert", "Path to cert").Default("cert.pem").String()
+	keyPath  = kingpin.Flag("web.tls.key", "Path to key").Default("key.pem").String()
+	caPath   = kingpin.Flag("web.tls.ca", "Path to CA to auth clients against").Default("ca.pem").String()
+	verify   = kingpin.Flag("web.tls.verify", "Disable client verification").Default("false").Bool()
+	tlsAddr  = kingpin.Flag("web.tls.listen-address", "The address to listen on for HTTPS requests.").String()
 
-	tPath = flag.String("web.telemetry-path", "/metrics", "The address to listen on for HTTP requests.")
-	pPath = flag.String("web.proxy-path", "/proxy", "The address to listen on for HTTP requests.")
+	tPath = kingpin.Flag("web.telemetry-path", "The address to listen on for HTTP requests.").Default("/metrics").String()
+	pPath = kingpin.Flag("web.proxy-path", "The address to listen on for HTTP requests.").Default("/proxy").String()
 
 	proxyDuration = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
@@ -97,12 +97,16 @@ func init() {
 	prometheus.MustRegister(proxyMalformedCount)
 	prometheus.MustRegister(cmdStartsCount)
 	prometheus.MustRegister(cmdFailsCount)
-	flag.Var(&cfgDirs, "config.dirs", "The path to directories of configuration files, can be specified multiple times.")
-	//log.AddFlags(flag.CommandLine)
+
+	log.AddFlags(kingpin.CommandLine)
+	kingpin.Parse()
+
+	for _, cfgDir := range *cfgDirsFl {
+		cfgDirs = append(cfgDirs, cfgDir)
+	}
 }
 
 func main() {
-	flag.Parse()
 	if *printVersion {
 		fmt.Fprintf(os.Stderr, "Version: %s\n", versionStr())
 		os.Exit(0)

@@ -52,8 +52,10 @@ vet:
 	echo ">> vetting code"
 	$(GO) vet $(pkgs)
 
-vendor: go.mod go.sum
-	go mod vendor
+.PHONY: vendor
+vendor:
+	echo ">> download vendor code"
+	dep ensure -v --vendor-only
 
 .PHONY: build
 build: vendor promu
@@ -68,6 +70,7 @@ tarball: promu
 .PHONY: promu
 promu:
 	echo ">> fetching promu"
+	$(GO) get -u github.com/prometheus/promu
 	GOOS=$(shell uname -s | tr A-Z a-z) \
 	GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
 	$(GO) build -o promu github.com/prometheus/promu

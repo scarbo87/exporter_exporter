@@ -4,6 +4,7 @@ exporter_exporter
 dist
 .build
 .tarballs
+.idea/*
 vendor
 promu
 github-release
