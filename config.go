@@ -26,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/log"
 
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 type config struct {
@@ -74,6 +74,7 @@ type execConfig struct {
 }
 
 func readConfig(r io.Reader) (*config, error) {
+
 	buf := bytes.Buffer{}
 	io.Copy(&buf, r)
 	cfg := config{}
@@ -91,23 +92,6 @@ func readConfig(r io.Reader) (*config, error) {
 	}
 
 	return &cfg, err
-}
-
-func readModuleConfig(name string, r io.Reader) (*moduleConfig, error) {
-	buf := bytes.Buffer{}
-	io.Copy(&buf, r)
-	cfg := moduleConfig{}
-
-	err := yaml.Unmarshal(buf.Bytes(), &cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = checkModuleConfig(name, &cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
 }
 
 func checkModuleConfig(name string, cfg *moduleConfig) error {

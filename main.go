@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,13 +37,9 @@ import (
 var (
 	printVersion = kingpin.Flag("version", "Print the version and exit").Default("false").Bool()
 
-	cfgDirs   StringSliceFlag
-	cfgDirsFl = kingpin.Flag("config.dirs", "The path to directories of configuration files, can be specified multiple times.").Default("config.dirs").Strings()
-	cfgFile   = kingpin.Flag("config.file", "The path to the configuration file.").Default("expexp.yaml").String()
-	skipDirs  = kingpin.Flag("config.skip-dirs", "Skip non existent -config.dirs entries instead of terminating.").Default("false").Bool()
+	cfgFile = kingpin.Flag("config.file", "The path to the configuration file.").Default("config/expexp.yaml").String()
 
-	addr = kingpin.Flag("web.listen-address", "The address to listen on for HTTP requests.").Default(":9999").String()
-
+	addr            = kingpin.Flag("web.listen-address", "The address to listen on for HTTP requests.").Default(":9999").String()
 	bearerToken     = kingpin.Flag("web.bearer.token", "Bearer authentication token.").String()
 	bearerTokenFile = kingpin.Flag("web.bearer.token-file", "File containing the Bearer authentication token.").String()
 
@@ -100,17 +95,15 @@ func init() {
 
 	log.AddFlags(kingpin.CommandLine)
 	kingpin.Parse()
-
-	for _, cfgDir := range *cfgDirsFl {
-		cfgDirs = append(cfgDirs, cfgDir)
-	}
 }
 
 func main() {
+
 	if *printVersion {
 		fmt.Fprintf(os.Stderr, "Version: %s\n", versionStr())
 		os.Exit(0)
 	}
+
 	cfg := &config{
 		Modules: make(map[string]*moduleConfig),
 		XXX:     make(map[string]interface{}),
@@ -127,45 +120,6 @@ func main() {
 		_ = r.Close()
 		for mn, _ := range cfg.Modules {
 			log.Debugf("read module config '%s' from: %s", mn, *cfgFile)
-		}
-	}
-
-cfgDirs:
-	for _, cfgDir := range cfgDirs {
-		mfs, err := ioutil.ReadDir(cfgDir)
-		if err != nil {
-			if *skipDirs && os.IsNotExist(err) {
-				log.Warnf("skipping non existent config.dirs entry '%s'", cfgDir)
-				continue cfgDirs
-			}
-			log.Fatalf("failed reading directory: %s, %v", cfgDir, err)
-		}
-
-		yamlSuffixes := map[string]bool{
-			".yml":  true,
-			".yaml": true,
-		}
-		for _, mf := range mfs {
-			fullpath := filepath.Join(cfgDir, mf.Name())
-			if mf.IsDir() || !yamlSuffixes[filepath.Ext(mf.Name())] {
-				log.Warnf("skipping non-yaml file %v", fullpath)
-				continue
-			}
-			mn := strings.TrimSuffix(mf.Name(), filepath.Ext(mf.Name()))
-			if _, ok := cfg.Modules[mn]; ok {
-				log.Fatalf("module %s is already defined", mn)
-			}
-			r, err := os.Open(fullpath)
-			if err != nil {
-				log.Fatalf("failed to open config file: %s: %v", fullpath, err)
-			}
-			mcfg, err := readModuleConfig(mn, r)
-			_ = r.Close()
-			if err != nil {
-				log.Fatalf("failed reading configs %s, %s", fullpath, err)
-			}
-			log.Debugf("read module config '%s' from: %s", mn, fullpath)
-			cfg.Modules[mn] = mcfg
 		}
 	}
 	if len(cfg.Modules) == 0 {
@@ -218,13 +172,13 @@ cfgDirs:
 	}
 
 	eg, ctx := errgroup.WithContext(context.Background())
-
 	if *addr == "" && *tlsAddr == "" {
 		log.Info("No web addresses to listen on, nothing to do!")
 		os.Exit(0)
 	}
 
 	if *addr != "" {
+		log.Infof("Start web server on %s", *addr)
 		eg.Go(func() error {
 			return http.ListenAndServe(*addr, handler)
 		})
@@ -274,6 +228,7 @@ cfgDirs:
 }
 
 func (cfg *config) doProxy(w http.ResponseWriter, r *http.Request) {
+
 	mod, ok := r.URL.Query()["module"]
 	if !ok {
 		log.Errorf("no module given")
@@ -298,6 +253,7 @@ func (cfg *config) doProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *config) listModules(w http.ResponseWriter, r *http.Request) {
+
 	log.Debugf("Listing modules")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	tmpl := template.Must(template.New("modules").Parse(`
@@ -316,6 +272,7 @@ func (cfg *config) listModules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m moduleConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	st := time.Now()
 	defer func() {
 		proxyDuration.WithLabelValues(m.name).Observe(float64(time.Since(st)) / float64(time.Second))
@@ -345,18 +302,4 @@ func (m moduleConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("unknown module method %v\n", m.Method), http.StatusNotFound)
 		return
 	}
-}
-
-// StringSliceFlags collects multiple uses of a named flag into a slice.
-type StringSliceFlag []string
-
-func (s *StringSliceFlag) String() string {
-	// Just some representation output, not actually used to parse the input,
-	// the flag is instead supposed to be specified multiple times.
-	return strings.Join(*s, ", ")
-}
-
-func (s *StringSliceFlag) Set(value string) error {
-	*s = append(*s, value)
-	return nil
 }
